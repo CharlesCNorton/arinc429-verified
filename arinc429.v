@@ -15,9 +15,86 @@
 (*                                                                            *)
 (******************************************************************************)
 
-From Stdlib Require Import Arith Bool Lia PeanoNat.
+From Stdlib Require Import Arith Bool Lia List PeanoNat.
 
 Local Open Scope nat_scope.
+
+Import ListNotations.
+
+Inductive arinc_429_revision :=
+| arinc_429_part1_supp17.
+
+Definition pinned_revision : arinc_429_revision :=
+  arinc_429_part1_supp17.
+
+Inductive spec_clause :=
+| clause_word_format_32_bit
+| clause_label_field_bits_1_8
+| clause_sdi_field_bits_9_10
+| clause_data_field_bits_11_29
+| clause_ssm_field_bits_30_31
+| clause_parity_bit_32_odd
+| clause_label_octal_presentation.
+
+Inductive development_item :=
+| item_word_layout
+| item_payload_encoding
+| item_payload_decoding
+| item_odd_parity_digit
+| item_label_octal_conversion.
+
+Definition traced_clauses (item : development_item) : list spec_clause :=
+  match item with
+  | item_word_layout =>
+      [ clause_word_format_32_bit;
+        clause_label_field_bits_1_8;
+        clause_sdi_field_bits_9_10;
+        clause_data_field_bits_11_29;
+        clause_ssm_field_bits_30_31;
+        clause_parity_bit_32_odd ]
+  | item_payload_encoding =>
+      [ clause_label_field_bits_1_8;
+        clause_sdi_field_bits_9_10;
+        clause_data_field_bits_11_29;
+        clause_ssm_field_bits_30_31;
+        clause_parity_bit_32_odd ]
+  | item_payload_decoding =>
+      [ clause_label_field_bits_1_8;
+        clause_sdi_field_bits_9_10;
+        clause_data_field_bits_11_29;
+        clause_ssm_field_bits_30_31 ]
+  | item_odd_parity_digit =>
+      [ clause_parity_bit_32_odd ]
+  | item_label_octal_conversion =>
+      [ clause_label_field_bits_1_8;
+        clause_label_octal_presentation ]
+  end.
+
+Definition current_scope : list development_item :=
+  [ item_word_layout;
+    item_payload_encoding;
+    item_payload_decoding;
+    item_odd_parity_digit;
+    item_label_octal_conversion ].
+
+Definition trace_entry_well_formed (item : development_item) : Prop :=
+  traced_clauses item <> [].
+
+Definition current_scope_fully_traced : Prop :=
+  Forall trace_entry_well_formed current_scope.
+
+Lemma pinned_revision_is_fixed :
+  pinned_revision = arinc_429_part1_supp17.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma current_scope_fully_traced_proof :
+  current_scope_fully_traced.
+Proof.
+  unfold current_scope_fully_traced, current_scope, trace_entry_well_formed.
+  repeat constructor; discriminate.
+Qed.
 
 Fixpoint pow2 (n : nat) : nat :=
   match n with
@@ -51,6 +128,17 @@ Definition ssm_bound : nat := pow2 ssm_width.
 Definition parity_weight : nat := pow2 payload_width.
 Definition word_bound : nat := 2 * parity_weight.
 
+Record word32 := {
+  word32_unsigned : nat;
+  word32_range : word32_unsigned < word_bound;
+}.
+
+Definition nat_of_word32 (word : word32) : nat :=
+  word32_unsigned word.
+
+Definition word32_of_nat (word : nat) (Hword : word < word_bound) : word32 :=
+  {| word32_unsigned := word; word32_range := Hword |}.
+
 Record fields := {
   label : nat;
   sdi : nat;
@@ -81,6 +169,27 @@ Definition ssm_bit (bit : nat) : Prop :=
 
 Definition parity_bit (bit : nat) : Prop :=
   in_bit_range parity_offset parity_width bit.
+
+Definition bit_mask (width : nat) : nat :=
+  pow2 width - 1.
+
+Definition field_mask (offset width : nat) : nat :=
+  pow2 offset * bit_mask width.
+
+Definition extract_bits (value offset width : nat) : nat :=
+  (value / pow2 offset) mod pow2 width.
+
+Definition insert_bits (value offset field : nat) : nat :=
+  value + pow2 offset * field.
+
+Definition bit_at (value bit : nat) : nat :=
+  extract_bits value bit 1.
+
+Definition wire_bit_index (position : nat) : nat :=
+  if position <? label_width then label_width - 1 - position else position.
+
+Definition wire_bit (word position : nat) : nat :=
+  extract_bits word (wire_bit_index position) 1.
 
 Definition payload (f : fields) : nat :=
   label f
@@ -166,6 +275,15 @@ Definition word_valid (word : nat) : Prop :=
 
 Definition word_has_odd_population (word : nat) : Prop :=
   odd_population word_width word = true.
+
+Definition word32_valid (word : word32) : Prop :=
+  parity_digit_correct (nat_of_word32 word).
+
+Definition word_well_formed (word : nat) : Prop :=
+  exists f, fields_valid f /\ word = encode f.
+
+Definition word32_well_formed (word : word32) : Prop :=
+  word_well_formed (nat_of_word32 word).
 
 Record octal_digits := {
   octal_hundreds : nat;
@@ -281,6 +399,63 @@ Proof.
   vm_compute. repeat split; reflexivity.
 Qed.
 
+Lemma wire_bit_index_reverses_label_prefix :
+  forall position,
+    position < label_width ->
+    wire_bit_index position = label_width - 1 - position.
+Proof.
+  intros position Hposition.
+  unfold wire_bit_index.
+  destruct (position <? label_width) eqn:Hltb.
+  - reflexivity.
+  - apply Nat.ltb_ge in Hltb.
+    lia.
+Qed.
+
+Lemma wire_bit_index_is_identity_after_label :
+  forall position,
+    label_width <= position ->
+    wire_bit_index position = position.
+Proof.
+  intros position Hposition.
+  unfold wire_bit_index.
+  destruct (position <? label_width) eqn:Hltb.
+  - apply Nat.ltb_lt in Hltb.
+    lia.
+  - reflexivity.
+Qed.
+
+Lemma wire_bit_index_range :
+  forall position,
+    position < word_width ->
+    wire_bit_index position < word_width.
+Proof.
+  intros position Hposition.
+  destruct (Nat.lt_ge_cases position label_width) as [Hlabel|Hafter].
+  - rewrite wire_bit_index_reverses_label_prefix by exact Hlabel.
+    unfold label_width, word_width.
+    lia.
+  - rewrite wire_bit_index_is_identity_after_label by exact Hafter.
+    exact Hposition.
+Qed.
+
+Lemma wire_bit_index_label_prefix_involution :
+  forall position,
+    position < label_width ->
+    wire_bit_index (wire_bit_index position) = position.
+Proof.
+  intros position Hposition.
+  replace (wire_bit_index position) with (label_width - 1 - position).
+  2:{
+    symmetry.
+    apply wire_bit_index_reverses_label_prefix.
+    exact Hposition.
+  }
+  assert (Hinner : label_width - 1 - position < label_width) by lia.
+  rewrite wire_bit_index_reverses_label_prefix by exact Hinner.
+  lia.
+Qed.
+
 Lemma mod_digit :
   forall base digit rest,
     0 < base ->
@@ -294,6 +469,20 @@ Proof.
   exact Hdigit.
 Qed.
 
+Lemma extract_bits_range :
+  forall value offset width,
+    extract_bits value offset width < pow2 width.
+Proof.
+  intros value offset width.
+  unfold extract_bits.
+  assert (0 < pow2 width) as Hpow2_pos.
+  {
+    induction width as [|width IH]; simpl; lia.
+  }
+  apply Nat.mod_upper_bound.
+  lia.
+Qed.
+
 Lemma div_digit :
   forall base digit rest,
     0 < base ->
@@ -305,6 +494,28 @@ Proof.
   rewrite Nat.div_add by lia.
   rewrite Nat.div_small by lia.
   lia.
+Qed.
+
+Lemma extract_bits_insert_bits_zero :
+  forall offset width field,
+    field < pow2 width ->
+    extract_bits (insert_bits 0 offset field) offset width = field.
+Proof.
+  intros offset width field Hfield.
+  unfold extract_bits, insert_bits.
+  assert (0 < pow2 offset) as Hoffset_pos.
+  {
+    induction offset as [|offset IH]; simpl; lia.
+  }
+  rewrite <- Nat.add_0_l.
+  rewrite div_digit with
+      (base := pow2 offset)
+      (digit := 0)
+      (rest := field).
+  - apply Nat.mod_small.
+    exact Hfield.
+  - exact Hoffset_pos.
+  - exact Hoffset_pos.
 Qed.
 
 Lemma expected_parity_digit_range :
@@ -721,6 +932,79 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma extract_label_slice_payload :
+  forall f,
+    fields_valid f ->
+    extract_bits (payload f) label_offset label_width = label f.
+Proof.
+  intros f Hvalid.
+  unfold extract_bits, label_offset, label_width.
+  change ((payload f / 1) mod label_bound = label f).
+  rewrite Nat.div_1_r.
+  apply decode_label_from_payload_payload.
+  exact Hvalid.
+Qed.
+
+Lemma extract_sdi_slice_payload :
+  forall f,
+    fields_valid f ->
+    extract_bits (payload f) sdi_offset sdi_width = sdi f.
+Proof.
+  intros f Hvalid.
+  unfold extract_bits, sdi_offset, sdi_width.
+  change (((payload f) / label_bound) mod sdi_bound = sdi f).
+  apply decode_sdi_from_payload_payload.
+  exact Hvalid.
+Qed.
+
+Lemma extract_data_slice_payload :
+  forall f,
+    fields_valid f ->
+    extract_bits (payload f) data_offset data_width = data f.
+Proof.
+  intros f Hvalid.
+  unfold extract_bits, data_offset, data_width.
+  replace (pow2 10) with (label_bound * sdi_bound).
+  2:{
+    unfold label_bound, sdi_bound, label_width, sdi_width.
+    replace 10 with (8 + 2) by reflexivity.
+    rewrite pow2_add.
+    reflexivity.
+  }
+  rewrite <- Nat.div_div by
+    (pose proof label_bound_positive; pose proof sdi_bound_positive; lia).
+  change ((((payload f) / label_bound) / sdi_bound) mod data_bound = data f).
+  apply decode_data_from_payload_payload.
+  exact Hvalid.
+Qed.
+
+Lemma extract_ssm_slice_payload :
+  forall f,
+    fields_valid f ->
+    extract_bits (payload f) ssm_offset ssm_width = ssm f.
+Proof.
+  intros f Hvalid.
+  unfold extract_bits, ssm_offset, ssm_width.
+  replace (pow2 29) with ((label_bound * sdi_bound) * data_bound).
+  2:{
+    unfold label_bound, sdi_bound, data_bound,
+      label_width, sdi_width, data_width.
+    replace 29 with (8 + (2 + 19)) by reflexivity.
+    rewrite (pow2_add 8 (2 + 19)).
+    rewrite (pow2_add 2 19).
+    nia.
+  }
+  rewrite <- Nat.div_div by
+    (pose proof label_bound_positive;
+     pose proof sdi_bound_positive;
+     pose proof data_bound_positive; lia).
+  rewrite <- Nat.div_div by
+    (pose proof label_bound_positive; pose proof sdi_bound_positive; lia).
+  change (((((payload f) / label_bound) / sdi_bound) / data_bound) mod ssm_bound = ssm f).
+  apply decode_ssm_from_payload_payload.
+  exact Hvalid.
+Qed.
+
 Lemma encode_decode_fields :
   forall word,
     word_valid word ->
@@ -1058,4 +1342,103 @@ Proof.
     rewrite Hencode.
     apply word_valid_encode.
     exact Hvalid.
+Qed.
+
+Lemma word_valid_iff_well_formed :
+  forall word,
+    word_valid word <-> word_well_formed word.
+Proof.
+  intro word.
+  unfold word_well_formed.
+  apply word_valid_iff_encoded_fields.
+Qed.
+
+Lemma word32_valid_iff_well_formed :
+  forall word,
+    word32_valid word <-> word32_well_formed word.
+Proof.
+  intro word.
+  unfold word32_well_formed.
+  split.
+  - intro Hvalid.
+    apply word_valid_iff_well_formed.
+    split.
+    + exact (word32_range word).
+    + exact Hvalid.
+  - intro Hwell_formed.
+    apply word_valid_iff_well_formed in Hwell_formed.
+    exact (proj2 Hwell_formed).
+Qed.
+
+Definition encode_word32
+  (f : fields)
+  (Hvalid : fields_valid f) : word32 :=
+  word32_of_nat (encode f) (encode_range f Hvalid).
+
+Definition decode_fields_word32 (word : word32) : fields :=
+  decode_fields (nat_of_word32 word).
+
+Definition decode_parity_digit_word32 (word : word32) : nat :=
+  decode_parity_digit (nat_of_word32 word).
+
+Lemma nat_of_word32_of_nat :
+  forall word Hword,
+    nat_of_word32 (word32_of_nat word Hword) = word.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma word32_valid_iff_word_valid :
+  forall word,
+    word32_valid word <->
+    word_valid (nat_of_word32 word).
+Proof.
+  intro word.
+  unfold word32_valid, word_valid, nat_of_word32.
+  split.
+  - intro Hparity.
+    split.
+    + exact (word32_range word).
+    + exact Hparity.
+  - intros [_ Hparity].
+    exact Hparity.
+Qed.
+
+Lemma encode_word32_refines_encode :
+  forall f Hvalid,
+    nat_of_word32 (encode_word32 f Hvalid) = encode f.
+Proof.
+  intros f Hvalid.
+  unfold encode_word32.
+  apply nat_of_word32_of_nat.
+Qed.
+
+Lemma decode_fields_word32_refines_decode_fields :
+  forall word,
+    decode_fields_word32 word = decode_fields (nat_of_word32 word).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma decode_fields_encode_word32 :
+  forall f Hvalid,
+    decode_fields_word32 (encode_word32 f Hvalid) = f.
+Proof.
+  intros f Hvalid.
+  unfold decode_fields_word32.
+  rewrite encode_word32_refines_encode.
+  apply decode_fields_encode.
+  exact Hvalid.
+Qed.
+
+Lemma encode_decode_word32_refines_nat :
+  forall word,
+    word32_valid word ->
+    encode (decode_fields_word32 word) = nat_of_word32 word.
+Proof.
+  intros word Hvalid.
+  unfold decode_fields_word32.
+  apply encode_decode_fields.
+  apply (proj1 (word32_valid_iff_word_valid word)).
+  exact Hvalid.
 Qed.
