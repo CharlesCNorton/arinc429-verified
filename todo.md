@@ -1,30 +1,28 @@
 # ARINC 429 Formalization TODO
 
-1. Fix the target standard by formalizing one exact ARINC 429 revision and build a clause-by-clause trace matrix from that document into the Coq development.
-2. Introduce a true 32-bit word model and prove it equivalent to the current arithmetic packing model.
-3. Formalize bit extraction, bit insertion, and field masking, and prove that every field occupies exactly its mandated bit positions.
-4. Formalize the ARINC 429 label bit-order and transmission-order semantics and prove the octal label model matches the wire-level label exactly.
-5. Formalize the complete word-to-wire serializer, including bit sequence, ordering, and parity placement.
-6. Formalize the wire-to-word deserializer and prove it is the inverse of the serializer under valid transmission assumptions.
-7. Formalize the electrical signaling layer, including bipolar RZ levels, null state, and receiver interpretation thresholds.
-8. Formalize the timing layer, including both data rates, tolerance bounds, bit timing, and interword gap requirements.
-9. Formalize the transmitter state machine and prove it emits only standard-conformant waveforms and timing.
-10. Formalize the receiver state machine and prove it reconstructs words correctly from conformant waveforms.
-11. Formalize a channel and fault model covering noise, jitter, bit flips, truncation, and timing distortion.
-12. Strengthen `word_valid` from numeric range plus parity consistency into full standards-level word well-formedness.
-13. Prove that every encoded valid word has true odd population at the 32-bit level, not merely a correct stored parity digit.
-14. Define explicit acceptance and rejection semantics for malformed or faulted received words, with named error classes.
-15. Formalize SDI semantics as actual message-routing semantics rather than a raw 2-bit field.
-16. Formalize SSM semantics as typed status semantics rather than a raw 2-bit field.
-17. Formalize typed payload semantics for BNR, BCD, discrete, maintenance, and other ARINC-relevant encodings.
-18. Build a label dictionary that assigns each supported label a typed payload schema and legal SDI/SSM interpretation.
-19. Formalize label-specific legality rules, including reserved labels, forbidden encodings, and installation-specific constraints where applicable.
-20. Prove encode/decode correctness for typed messages, not just raw field tuples.
-21. Prove uniqueness and non-aliasing at the typed message level across the supported label space.
-22. Prove interoperability by validating the formal spec against at least one independently implemented encoder and decoder.
-23. Derive an executable reference implementation from the formal model and prove it equivalent to the specification.
-24. Prove equivalence between the formal model and target implementation artifacts such as HDL, firmware, or host-side libraries.
-25. Refactor the development into audited modules for word format, wire semantics, timing, faults, typing, and conformance.
-26. Add certification-grade artifacts: assumptions, guarantees, proof obligations, traceability tables, and reviewable theorem indexing.
-27. Add a conformance corpus of canonical vectors, malformed vectors, and fault-injection cases and prove the implementation matches them.
-28. Eliminate deprecated proof dependencies and bring the proof base onto stable, current library lemmas only.
+1. Fix the target standard. Pin one exact ARINC 429 revision and trace every definition, invariant, and theorem back to named clauses.
+2. Kill the unbounded-word abstraction. Replace the `nat`-level word with a true 32-bit model and prove the current arithmetic packing is a refinement, not the foundation.
+3. Make bits first-class. Define extraction, insertion, masking, and field slicing explicitly, then prove every field occupies exactly its mandated bit positions.
+4. Upgrade well-formedness. Redefine `word_valid` as full structural validity of an ARINC word, not merely numeric range plus stored-parity agreement.
+5. Close the parity hole. Prove that every encoded valid word has true odd population across all 32 bits.
+6. Fix label semantics at the wire. Formalize octal-label meaning, label bit order, and transmission-order reversal, then prove the wire label matches the abstract label exactly.
+7. Build the real serializer. Define the exact word-to-wire bit stream, including ordering and parity placement, and prove it is standard-conformant.
+8. Build the real deserializer. Define wire-to-word reconstruction and prove it inverts the serializer under valid transmission assumptions.
+9. Formalize the signal itself. Model bipolar RZ levels, null state, and receiver interpretation thresholds.
+10. Formalize time, not just bits. Model both ARINC data rates, tolerance bounds, bit timing, and interword gaps.
+11. Prove the machines. Define transmitter and receiver state machines and prove they emit and accept only standard-conformant behavior.
+12. Admit the world is hostile. Add a channel and fault model for noise, jitter, flips, truncation, and timing distortion.
+13. Make failure semantics explicit. Define exactly which malformed or faulted inputs are rejected, and classify the rejection reasons.
+14. Stop treating SDI as raw bits. Give SDI actual routing semantics.
+15. Stop treating SSM as raw bits. Give SSM typed status semantics.
+16. Stop treating payload as an anonymous integer. Define typed payload models for BNR, BCD, discrete, maintenance, and other ARINC-relevant encodings.
+17. Build a label dictionary. Assign each supported label a payload type and legal SDI/SSM interpretation.
+18. Enforce label-specific legality. Formalize reserved labels, forbidden encodings, and installation-specific constraints where applicable.
+19. Lift correctness to typed messages. Prove encode/decode roundtrip for real message types, not just raw field tuples.
+20. Lift uniqueness to typed messages. Prove non-aliasing and uniqueness at the typed-message level across the supported label space.
+21. Cross-check reality. Validate the formal model against at least one independent encoder/decoder and a conformance corpus of valid and malformed vectors.
+22. Generate something executable. Derive a reference implementation from the formal model and prove it equivalent to the spec.
+23. Close the implementation gap. Prove equivalence between the formal model and target HDL, firmware, or host-side software artifacts.
+24. Split the monolith. Refactor the development into auditable modules for word format, wire semantics, timing, faults, typing, and conformance.
+25. Remove proof-ecosystem rot. Eliminate deprecated Rocq/Coq dependencies and stabilize the proof base on current lemmas only.
+26. Finish the certification story. Add assumptions, guarantees, traceability tables, proof obligations, theorem indexing, and review artifacts fit for external audit.
